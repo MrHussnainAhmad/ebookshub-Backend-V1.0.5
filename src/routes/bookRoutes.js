@@ -668,19 +668,39 @@ router.get("/:id/comments", protectRoute, async (req, res) => {
   try {
     const bookId = req.params.id;
     
+    // Use more explicit population for comments.user
     const book = await Book.findById(bookId)
       .populate({
         path: 'comments.user',
-        select: 'username profileImage'
+        select: 'username profileImage',
+        model: 'User' // Explicitly specify the model
       });
     
     if (!book) {
       return res.status(404).json({ message: "Book not found" });
     }
     
+    // Transform comments to ensure user info is properly included
     const comments = book.comments || [];
     
-    res.json(comments);
+    // Map through comments to ensure each has proper user info
+    const processedComments = comments.map(comment => {
+      // Handle case where user might be null or undefined
+      const user = comment.user || { username: 'Unknown User', profileImage: '/default-avatar.png' };
+      
+      return {
+        _id: comment._id,
+        text: comment.text,
+        createdAt: comment.createdAt,
+        user: {
+          _id: user._id || 'unknown',
+          username: user.username || 'Unknown User',
+          profileImage: user.profileImage || '/default-avatar.png'
+        }
+      };
+    });
+    
+    res.json(processedComments);
   } catch (error) {
     console.error("Error fetching comments:", error);
     res.status(500).json({ message: "Failed to fetch comments" });
@@ -718,13 +738,21 @@ router.post("/:id/comments", protectRoute, async (req, res) => {
     
     await book.save();
     
-    // Populate user info in the new comment
-    const populatedBook = await Book.findById(bookId).populate({
-      path: 'comments.user',
-      select: 'username profileImage'
-    });
+    // Get the User model directly to get user information
+    const User = await import("../models/User.js").then(module => module.default);
+    const userInfo = await User.findById(userId).select('username profileImage');
     
-    const newComment = populatedBook.comments[populatedBook.comments.length - 1];
+    // Create the new comment with populated user info
+    const newComment = {
+      _id: book.comments[book.comments.length - 1]._id,
+      text: text.trim(),
+      createdAt: new Date(),
+      user: {
+        _id: userId,
+        username: userInfo.username || 'Unknown User',
+        profileImage: userInfo.profileImage || '/default-avatar.png'
+      }
+    };
     
     res.status(201).json({
       message: "Comment added successfully",
