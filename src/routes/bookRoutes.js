@@ -548,24 +548,20 @@ router.get("/search", protectRoute, async (req, res) => {
 router.post("/:id/view", protectRoute, async (req, res) => {
   try {
     const bookId = req.params.id;
-
     const book = await Book.findByIdAndUpdate(
       bookId,
       { $inc: { views: 1 } },
       { new: true }
     );
-
     if (!book) {
       return res.status(404).json({ message: "Book not found" });
     }
-
     res.json({ success: true, views: book.views });
   } catch (error) {
     console.error("Error incrementing book views:", error);
     res.status(500).json({ message: "Failed to update book views" });
   }
 });
-
 // Rate a book
 router.post("/:id/rate", protectRoute, async (req, res) => {
   try {
