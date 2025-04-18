@@ -666,25 +666,29 @@ router.get("/:id", protectRoute, async (req, res) => {
   }
 });
 
-// Get comments for a book (fixed)
+// Get comments for a book (Final Fix)
 router.get("/:id/comments", protectRoute, async (req, res) => {
   try {
     const book = await Book.findById(req.params.id)
       .populate({
         path: 'comments.user',
         select: 'username profileImage',
-        options: { retainNullValues: true } // Keep comments even if user deleted
-      });
+        // Add match to filter out deleted users
+        match: { deleted: { $ne: true } 
+      }});
 
     if (!book) return res.status(404).json({ message: "Book not found" });
 
-    const safeComments = book.comments.map(comment => ({
-      ...comment.toObject(),
-      user: comment.user || { 
-        username: req.user.username,
-        profileImage: req.user.profileImage
-      }
-    }));
+    const safeComments = book.comments
+      .filter(comment => comment.user) // Remove comments from deleted users
+      .map(comment => ({
+        ...comment.toObject(),
+        user: {
+          _id: comment.user._id,
+          username: comment.user.username,
+          profileImage: comment.user.profileImage || '/default-avatar.png'
+        }
+      }));
 
     res.json(safeComments);
   } catch (error) {
@@ -693,7 +697,7 @@ router.get("/:id/comments", protectRoute, async (req, res) => {
   }
 });
 
-// Add comment to book (fixed)
+// Add comment to book (Final Fix)
 router.post("/:id/comments", protectRoute, async (req, res) => {
   try {
     const { text } = req.body;
@@ -715,18 +719,21 @@ router.post("/:id/comments", protectRoute, async (req, res) => {
       { new: true }
     ).populate({
       path: 'comments.user',
-      select: 'username profileImage'
-    });
+      select: 'username profileImage',
+      match: { deleted: { $ne: true } 
+    }});
 
+    // Get the populated comment
     const newComment = book.comments[book.comments.length - 1];
     
     res.status(201).json({
       message: "Comment added",
       comment: {
         ...newComment.toObject(),
-        user: newComment.user || {
-          username: req.user.username,
-          profileImage: req.user.profileImage
+        user: {
+          _id: newComment.user?._id || req.user._id,
+          username: newComment.user?.username || req.user.username,
+          profileImage: newComment.user?.profileImage || req.user.profileImage || '/default-avatar.png'
         }
       }
     });
