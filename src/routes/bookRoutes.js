@@ -5,6 +5,9 @@ import protectRoute from "../middlewares/auth.middleware.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import User from "../models/User.js";
+import mongoose from "mongoose"; // Add this import
+import { userInfo } from "os";
 
 const router = express.Router();
 
@@ -663,100 +666,69 @@ router.get("/:id", protectRoute, async (req, res) => {
   }
 });
 
-// Get comments for a book
+// Get comments for a book (fixed)
 router.get("/:id/comments", protectRoute, async (req, res) => {
   try {
-    const bookId = req.params.id;
-    
-    // Use more explicit population for comments.user
-    const book = await Book.findById(bookId)
+    const book = await Book.findById(req.params.id)
       .populate({
         path: 'comments.user',
         select: 'username profileImage',
-        model: 'User' // Explicitly specify the model
+        options: { retainNullValues: true } // Keep comments even if user deleted
       });
-    
-    if (!book) {
-      return res.status(404).json({ message: "Book not found" });
-    }
-    
-    // Transform comments to ensure user info is properly included
-    const comments = book.comments || [];
-    
-    // Map through comments to ensure each has proper user info
-    const processedComments = comments.map(comment => {
-      // Handle case where user might be null or undefined
-      const user = comment.user || { username: 'Unknown User', profileImage: '/default-avatar.png' };
-      
-      return {
-        _id: comment._id,
-        text: comment.text,
-        createdAt: comment.createdAt,
-        user: {
-          _id: user._id || 'unknown',
-          username: user.username || 'Unknown User',
-          profileImage: user.profileImage || '/default-avatar.png'
-        }
-      };
-    });
-    
-    res.json(processedComments);
+
+    if (!book) return res.status(404).json({ message: "Book not found" });
+
+    const safeComments = book.comments.map(comment => ({
+      ...comment.toObject(),
+      user: comment.user || { 
+        username: req.user.username,
+        profileImage: req.user.profileImage
+      }
+    }));
+
+    res.json(safeComments);
   } catch (error) {
     console.error("Error fetching comments:", error);
     res.status(500).json({ message: "Failed to fetch comments" });
   }
 });
 
-// Add a comment to a book
+// Add comment to book (fixed)
 router.post("/:id/comments", protectRoute, async (req, res) => {
   try {
     const { text } = req.body;
     const bookId = req.params.id;
-    const userId = req.user._id;
     
-    if (!text?.trim()) {
-      return res.status(400).json({ message: "Comment text is required" });
-    }
-    
-    const book = await Book.findById(bookId);
-    
-    if (!book) {
-      return res.status(404).json({ message: "Book not found" });
-    }
-    
-    // Initialize comments array if it doesn't exist
-    if (!book.comments) {
-      book.comments = [];
-    }
-    
-    // Add the new comment
-    book.comments.push({
-      user: userId,
-      text: text.trim(),
-      createdAt: new Date()
+    if (!text?.trim()) return res.status(400).json({ message: "Comment text required" });
+
+    const book = await Book.findByIdAndUpdate(
+      bookId,
+      {
+        $push: {
+          comments: {
+            user: req.user._id,
+            text: text.trim(),
+            createdAt: new Date()
+          }
+        }
+      },
+      { new: true }
+    ).populate({
+      path: 'comments.user',
+      select: 'username profileImage'
     });
-    
-    await book.save();
-    
-    // Get the User model directly to get user information
-    const User = await import("../models/User.js").then(module => module.default);
-    const userInfo = await User.findById(userId).select('username profileImage');
-    
-    // Create the new comment with populated user info
-    const newComment = {
-      _id: book.comments[book.comments.length - 1]._id,
-      text: text.trim(),
-      createdAt: new Date(),
-      user: {
-        _id: userId,
-        username: userInfo.username || 'Unknown User',
-        profileImage: userInfo.profileImage || '/default-avatar.png'
-      }
-    };
+
+    const newComment = book.comments[book.comments.length - 1];
     
     res.status(201).json({
-      message: "Comment added successfully",
-      comment: newComment
+      message: "Comment added",
+      comment: {
+        ...newComment.toObject(),
+        user: newComment.user || {
+          username: req.user.username,
+          profileImage: req.user.profileImage
+        }
+      }
     });
   } catch (error) {
     console.error("Error adding comment:", error);

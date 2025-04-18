@@ -4,7 +4,7 @@ const commentSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
-    required: true,
+    required: true, // Added required validation
   },
   text: {
     type: String,
@@ -120,22 +120,7 @@ const bookSchema = new mongoose.Schema(
         },
       },
     ],
-    comments: [
-      {
-        user: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "User",
-        },
-        text: {
-          type: String,
-          required: true,
-        },
-        createdAt: {
-          type: Date,
-          default: Date.now,
-        },
-      },
-    ],
+    comments: [commentSchema], // Use the commentSchema definition
   },
   { timestamps: true }
 );
