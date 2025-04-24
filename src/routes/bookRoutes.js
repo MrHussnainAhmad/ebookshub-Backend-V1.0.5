@@ -337,7 +337,7 @@ router.get("/genre/:genreName", protectRoute, async (req, res) => {
 });
 
 // Get premium books
-router.get("/premium", protectRoute, async (req, res) => {
+router.get("/premium", async (req, res) => {
   try {
     const now = new Date();
 
@@ -846,6 +846,58 @@ router.delete("/books/:id", async (req, res) => {
       success: false, 
       message: "Failed to delete book" 
     });
+  }
+});
+
+// Add these two new routes to your bookRoutes.js file
+
+// Get premium book details without authentication
+router.get("/public/premium/:id", async (req, res) => {
+  try {
+    const bookId = req.params.id;
+    const book = await Book.findById(bookId)
+      .populate("user", "username profileImage");
+    
+    if (!book) {
+      return res.status(404).json({ message: "Book not found" });
+    }
+    
+    // Check if this is actually a premium book
+    if (!book.isPremium) {
+      return res.status(403).json({ message: "This is not a premium book" });
+    }
+    
+    // Return book details without user rating information
+    const publicBookDetails = {
+      ...book.toObject(),
+      userRating: null // No user-specific data for public access
+    };
+    
+    res.json(publicBookDetails);
+  } catch (error) {
+    console.error("Error fetching public premium book details:", error);
+    res.status(500).json({ message: "Failed to fetch book details" });
+  }
+});
+
+// Get PDF for a premium book without authentication
+router.get("/public/premium/:id/pdf", async (req, res) => {
+  try {
+    const book = await Book.findById(req.params.id);
+    if (!book || !book.pdfFile) {
+      return res.status(404).json({ message: "PDF not found" });
+    }
+
+    // Check if this is actually a premium book
+    if (!book.isPremium) {
+      return res.status(403).json({ message: "This is not a premium book" });
+    }
+
+    // Send the URL directly rather than redirecting
+    res.json({ pdfUrl: book.pdfFile });
+  } catch (error) {
+    console.error("Error serving public premium PDF:", error);
+    res.status(500).json({ message: "Error serving PDF file" });
   }
 });
 
